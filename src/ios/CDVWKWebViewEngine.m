@@ -49,14 +49,24 @@
         }
         self.uiDelegate = [[CDVWKWebViewUIDelegate alloc] initWithTitle:[[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleDisplayName"]];
 
+        NSString *source = @"var meta = document.createElement('meta'); \
+        meta.name = 'viewport'; \
+        meta.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no'; \
+        var head = document.getElementsByTagName('head')[0];\
+        head.appendChild(meta);";
+        WKUserScript *script = [[WKUserScript alloc] initWithSource:source
+                                                      injectionTime:WKUserScriptInjectionTimeAtDocumentEnd
+                                                   forMainFrameOnly:YES];
+        
         WKUserContentController* userContentController = [[WKUserContentController alloc] init];
         [userContentController addScriptMessageHandler:self name:CDV_BRIDGE_NAME];
+        [userContentController addUserScript:script];
 
         WKWebViewConfiguration* configuration = [[WKWebViewConfiguration alloc] init];
         configuration.userContentController = userContentController;
 
         WKWebView* wkWebView = [[WKWebView alloc] initWithFrame:frame configuration:configuration];
-
+        wkWebView.translatesAutoresizingMaskIntoConstraints = NO;
         wkWebView.UIDelegate = self.uiDelegate;
 
         self.engineWebView = wkWebView;
