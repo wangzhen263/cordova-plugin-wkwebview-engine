@@ -23,6 +23,9 @@
 
 #import <objc/message.h>
 
+#import "KVNProgress.h"
+#import "WKWebViewTouchDelegate.h"
+
 #define CDV_BRIDGE_NAME @"cordova"
 #define CDV_WKWEBVIEW_FILE_URL_LOAD_SELECTOR @"loadFileURL:allowingReadAccessToURL:"
 
@@ -30,6 +33,7 @@
 
 @property (nonatomic, strong, readwrite) UIView* engineWebView;
 @property (nonatomic, strong, readwrite) id <WKUIDelegate> uiDelegate;
+@property (nonatomic, strong) id <WKNavigationDelegate> touchDelegate;
 
 @end
 
@@ -49,18 +53,29 @@
         }
         self.uiDelegate = [[CDVWKWebViewUIDelegate alloc] initWithTitle:[[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleDisplayName"]];
 
+        NSString *source = @"var meta = document.createElement('meta'); \
+        meta.name = 'viewport'; \
+        meta.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no'; \
+        var head = document.getElementsByTagName('head')[0];\
+        head.appendChild(meta);";
+        WKUserScript *script = [[WKUserScript alloc] initWithSource:source
+                                                      injectionTime:WKUserScriptInjectionTimeAtDocumentEnd
+                                                   forMainFrameOnly:YES];
+        
         WKUserContentController* userContentController = [[WKUserContentController alloc] init];
         [userContentController addScriptMessageHandler:self name:CDV_BRIDGE_NAME];
+        [userContentController addUserScript:script];
 
         WKWebViewConfiguration* configuration = [[WKWebViewConfiguration alloc] init];
         configuration.userContentController = userContentController;
 
         WKWebView* wkWebView = [[WKWebView alloc] initWithFrame:frame configuration:configuration];
-
+        wkWebView.translatesAutoresizingMaskIntoConstraints = NO;
         wkWebView.UIDelegate = self.uiDelegate;
 
         self.engineWebView = wkWebView;
 
+        [wkWebView addObserver:self forKeyPath:@"estimatedProgress" options:NSKeyValueObservingOptionNew context:NULL];
         NSLog(@"Using WKWebView");
     }
 
@@ -89,35 +104,12 @@
 
     [self updateSettings:self.commandDelegate.settings];
 
-    // check if content thread has died on resume
-    NSLog(@"%@", @"CDVWKWebViewEngine will reload WKWebView if required on resume");
-    [[NSNotificationCenter defaultCenter]
-        addObserver:self
-           selector:@selector(onAppWillEnterForeground:)
-               name:UIApplicationWillEnterForegroundNotification object:nil];
-}
 
-- (void) onAppWillEnterForeground:(NSNotification*)notification {
-    [self reloadIfRequired];
-}
-
-- (BOOL)reloadIfRequired
-{
-    WKWebView* wkWebView = (WKWebView*)_engineWebView;
-    NSString* title = wkWebView.title;
-    BOOL reload = ((title == nil) || [title isEqualToString:@""]);
-
-#ifdef DEBUG
-    NSLog(@"%@", @"CDVWKWebViewEngine reloadIfRequired");
-    NSLog(@"CDVWKWebViewEngine reloadIfRequired WKWebView.title: %@", title);
-    NSLog(@"CDVWKWebViewEngine reloadIfRequired reload: %u", reload);
-#endif
-
-    if (reload) {
-        NSLog(@"%@", @"CDVWKWebViewEngine reloading!");
-        [wkWebView reload];
+    NSString *observer = [[[NSBundle mainBundle] infoDictionary] objectForKey:@"TouchIDLogin"];
+    if ([observer length] > 0) {
+        _touchDelegate = [[WKWebViewTouchDelegate alloc] initWithDelegate:self loginTag:observer];
+        wkWebView.navigationDelegate = _touchDelegate;
     }
-    return reload;
 }
 
 - (id)loadRequest:(NSURLRequest*)request
@@ -160,7 +152,7 @@
 {
     // See: https://issues.apache.org/jira/browse/CB-9636
     SEL wk_sel = NSSelectorFromString(CDV_WKWEBVIEW_FILE_URL_LOAD_SELECTOR);
-
+    
     // if it's a file URL, check whether WKWebView has the selector (which is in iOS 9 and up only)
     if (request.URL.fileURL) {
         return [_engineWebView respondsToSelector:wk_sel];
@@ -183,10 +175,10 @@
      wkWebView.configuration.preferences.javaScriptEnabled = [settings cordovaBoolSettingForKey:@"JavaScriptEnabled" default:YES];
      wkWebView.configuration.preferences.javaScriptCanOpenWindowsAutomatically = [settings cordovaBoolSettingForKey:@"JavaScriptCanOpenWindowsAutomatically" default:NO];
      */
-
+    
     // By default, DisallowOverscroll is false (thus bounce is allowed)
     BOOL bounceAllowed = !([settings cordovaBoolSettingForKey:@"DisallowOverscroll" defaultValue:NO]);
-
+    
     // prevent webView from bouncing
     if (!bounceAllowed) {
         if ([wkWebView respondsToSelector:@selector(scrollView)]) {
@@ -198,16 +190,6 @@
                 }
             }
         }
-    }
-
-    NSString* decelerationSetting = [settings cordovaSettingForKey:@"WKWebViewDecelerationSpeed"];
-    if (!decelerationSetting) {
-        // Fallback to the UIWebView-named preference
-        decelerationSetting = [settings cordovaSettingForKey:@"UIWebViewDecelerationSpeed"];
-    }
-
-    if (![@"fast" isEqualToString:decelerationSetting]) {
-        [wkWebView.scrollView setDecelerationRate:UIScrollViewDecelerationRateNormal];
     }
 }
 
@@ -253,11 +235,6 @@
     return _engineWebView;
 }
 
-- (UIView*)webView
-{
-    return self.engineWebView;
-}
-
 #pragma mark WKScriptMessageHandler implementation
 
 - (void)userContentController:(WKUserContentController*)userContentController didReceiveScriptMessage:(WKScriptMessage*)message
@@ -279,7 +256,7 @@
         NSData* jsonData = [NSJSONSerialization dataWithJSONObject:jsonEntry
                                                            options:0
                                                              error:&error];
-
+        
         if (error == nil) {
             commandJson = [[NSString alloc] initWithData:jsonData encoding:NSUTF8StringEncoding];
         }
@@ -299,35 +276,34 @@
 - (void)webView:(WKWebView*)webView didStartProvisionalNavigation:(WKNavigation*)navigation
 {
     [[NSNotificationCenter defaultCenter] postNotification:[NSNotification notificationWithName:CDVPluginResetNotification object:webView]];
+    [KVNProgress showProgress:0.0 status:@"Loading..."];
 }
 
 - (void)webView:(WKWebView*)webView didFinishNavigation:(WKNavigation*)navigation
 {
     CDVViewController* vc = (CDVViewController*)self.viewController;
     [CDVUserAgentUtil releaseLock:vc.userAgentLockToken];
-
+    
     [[NSNotificationCenter defaultCenter] postNotification:[NSNotification notificationWithName:CDVPageDidLoadNotification object:webView]];
+    [KVNProgress dismiss];
 }
 
 - (void)webView:(WKWebView*)theWebView didFailNavigation:(WKNavigation*)navigation withError:(NSError*)error
 {
     CDVViewController* vc = (CDVViewController*)self.viewController;
     [CDVUserAgentUtil releaseLock:vc.userAgentLockToken];
-
+    
     NSString* message = [NSString stringWithFormat:@"Failed to load webpage with error: %@", [error localizedDescription]];
     NSLog(@"%@", message);
-
+    
     NSURL* errorUrl = vc.errorURL;
     if (errorUrl) {
         errorUrl = [NSURL URLWithString:[NSString stringWithFormat:@"?error=%@", [message stringByAddingPercentEscapesUsingEncoding:NSUTF8StringEncoding]] relativeToURL:errorUrl];
         NSLog(@"%@", [errorUrl absoluteString]);
         [theWebView loadRequest:[NSURLRequest requestWithURL:errorUrl]];
     }
-}
-
-- (void)webViewWebContentProcessDidTerminate:(WKWebView *)webView
-{
-    [webView reload];
+    [KVNProgress showErrorWithStatus:message];
+    [KVNProgress dismiss];
 }
 
 - (BOOL)defaultResourcePolicyForURL:(NSURL*)url
@@ -336,7 +312,7 @@
     if ([url isFileURL]) {
         return YES;
     }
-
+    
     return NO;
 }
 
@@ -344,13 +320,13 @@
 {
     NSURL* url = [navigationAction.request URL];
     CDVViewController* vc = (CDVViewController*)self.viewController;
-
+    
     /*
      * Give plugins the chance to handle the url
      */
     BOOL anyPluginsResponded = NO;
     BOOL shouldAllowRequest = NO;
-
+    
     for (NSString* pluginName in vc.pluginObjects) {
         CDVPlugin* plugin = [vc.pluginObjects objectForKey:pluginName];
         SEL selector = NSSelectorFromString(@"shouldOverrideLoadWithRequest:navigationType:");
@@ -362,11 +338,11 @@
             }
         }
     }
-
+    
     if (anyPluginsResponded) {
         return decisionHandler(shouldAllowRequest);
     }
-
+    
     /*
      * Handle all other types of urls (tel:, sms:), and requests to load a url in the main webview.
      */
@@ -376,7 +352,16 @@
     } else {
         [[NSNotificationCenter defaultCenter] postNotification:[NSNotification notificationWithName:CDVPluginHandleOpenURLNotification object:url]];
     }
-
+    
     return decisionHandler(NO);
+}
+
+- (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary *)change context:(void *)context {
+    if ([keyPath isEqualToString:@"estimatedProgress"]) {
+        WKWebView* wkWebView = (WKWebView*)_engineWebView;
+        [KVNProgress updateProgress:wkWebView.estimatedProgress animated:YES];
+        if (wkWebView.estimatedProgress > 0.8)
+            [KVNProgress dismiss];
+    }
 }
 @end

@@ -54,6 +54,10 @@
         <source-file src="src/ios/CDVWKWebViewEngine.m" />
         <header-file src="src/ios/CDVWKWebViewUIDelegate.h" />
         <source-file src="src/ios/CDVWKWebViewUIDelegate.m" />
+        <header-file src="src/ios/TouchIDLogin.h" />
+        <source-file src="src/ios/TouchIDLogin.m" />
+        <header-file src="src/ios/WKWebViewTouchDelegate.h" />
+        <source-file src="src/ios/WKWebViewTouchDelegate.m" />
 
     </platform>
 
