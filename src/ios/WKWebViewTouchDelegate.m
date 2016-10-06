@@ -36,42 +36,61 @@
 #pragma mark WKWebView Delegate Functions
 - (void)webView:(WKWebView*)webView didStartProvisionalNavigation:(WKNavigation*)navigation
 {
-    NSLog(@"didStartProvisionalNavigation %@ %@", webView.URL, webView.URL.query);
     if (_backList.count > 0) {
-        if ([((NSURL*)[_backList lastObject]).path containsString:_path]
-            && [_touchID checkSupport])
+        if ([((NSURL*)[_backList lastObject]).path containsString:_path])
         {
-            if (![_touchID checkKey] || [((NSURL*)[_backList lastObject]).query containsString:ERROR_SIGN_IN_PARAM])
-            {
+            if ([_touchID checkSupport]) {
+                // Update user credential when user key is not existing or key becomes invalid.
+                if (![_touchID checkKey] || [webView.URL.query containsString:ERROR_SIGN_IN_PARAM])
+                {
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        NSString *jsCall = @"var elemEmails = document.getElementsByName('email');\
+                        var elemPwd = document.getElementsByName('password');\
+                        if (elemEmails.length == 1 && elemEmails[0].type == 'email' && elemPwd.length == 1 && elemPwd[0].type == 'password'){\
+                        [elemEmails[0].value,elemPwd[0].value]\
+                        }";
+                        [webView evaluateJavaScript:jsCall completionHandler:^(id result, NSError *error) {
+                            if (error == nil) {
+                                NSArray* retArray = (NSArray*)result;
+                                if (result != nil && [_touchID save:@{@"username":retArray[0],
+                                                                      @"password":retArray[1]}]) {
+                                    UIAlertController * alert = [UIAlertController
+                                                                 alertControllerWithTitle:@"Thanks"
+                                                                 message:@"You can login Coviu via fingerprint next time."
+                                                                 preferredStyle:UIAlertControllerStyleAlert];
+                                    UIAlertAction* okButton = [UIAlertAction
+                                                               actionWithTitle:@"Okay"
+                                                               style:UIAlertActionStyleDefault
+                                                               handler:^(UIAlertAction * action) {
+                                                               }];
+                                    [alert addAction:okButton];
+                                    
+                                    id object = [webView nextResponder];
+                                    while (![object isKindOfClass:[UIViewController class]] &&
+                                           object != nil) {
+                                        object = [object nextResponder];
+                                    }
+                                    
+                                    [(UIViewController*)object presentViewController:alert animated:YES completion:nil];
+                                }
+                            } else {
+                                NSLog(@"evaluateJavaScript error : %@", error.localizedDescription);
+                            }
+                        }];
+                    });
+                }
+            } else if (![webView.URL.query containsString:ERROR_SIGN_IN_PARAM]){
+                
                 dispatch_async(dispatch_get_main_queue(), ^{
                     NSString *jsCall = @"var elemEmails = document.getElementsByName('email');\
-                    var elemPwd = document.getElementsByName('password');\
-                    if (elemEmails.length == 1 && elemEmails[0].type == 'email' && elemPwd.length == 1 && elemPwd[0].type == 'password'){\
-                    [elemEmails[0].value,elemPwd[0].value]\
+                    if (elemEmails.length == 1 && elemEmails[0].type == 'email'){\
+                    [elemEmails[0].value]\
                     }";
                     [webView evaluateJavaScript:jsCall completionHandler:^(id result, NSError *error) {
                         if (error == nil) {
                             NSArray* retArray = (NSArray*)result;
-                            if (result != nil && [_touchID save:@{@"username":retArray[0],
-                                                                  @"password":retArray[1]}]) {
-                                UIAlertController * alert = [UIAlertController
-                                                             alertControllerWithTitle:@"Thanks"
-                                                             message:@"You can login Coviu via fingerprint next time."
-                                                             preferredStyle:UIAlertControllerStyleAlert];
-                                UIAlertAction* okButton = [UIAlertAction
-                                                           actionWithTitle:@"Okay"
-                                                           style:UIAlertActionStyleDefault
-                                                           handler:^(UIAlertAction * action) {
-                                                           }];
-                                [alert addAction:okButton];
-                                
-                                id object = [webView nextResponder];
-                                while (![object isKindOfClass:[UIViewController class]] &&
-                                       object != nil) {
-                                    object = [object nextResponder];
-                                }
-                                
-                                [(UIViewController*)object presentViewController:alert animated:YES completion:nil];
+                            if (result != nil && [_touchID onlySaveUser:retArray[0]]) {
+                                NSLog(@"touchID username saved");
                             }
                         } else {
                             NSLog(@"evaluateJavaScript error : %@", error.localizedDescription);
@@ -80,6 +99,8 @@
                 });
             }
         }
+        
+        [_backList removeAllObjects];
     }
     
     [_delegate webView:webView didStartProvisionalNavigation:navigation];
@@ -88,71 +109,87 @@
 - (void)webView:(WKWebView*)webView didFinishNavigation:(WKNavigation*)navigation
 {
     [_backList addObject:webView.URL];
-    if ([webView.URL.path containsString:_path]
-        && [_touchID checkSupport]
-        && [_touchID checkKey]
-        && ![((NSURL*)[_backList lastObject]).query containsString:ERROR_SIGN_IN_PARAM])
+    if ([webView.URL.path containsString:_path])
     {
-        [_touchID verify:@"Enter Coviu via fingerprint" replyPass:^(BOOL success, NSDictionary* ret){
-            if (success) {
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    NSString *autoLogin = [NSString stringWithFormat:@"var elemEmails = document.getElementsByName('email');\
-                    var elemPwd = document.getElementsByName('password');\
-                    if (elemEmails.length == 1 && elemEmails[0].type == 'email' && elemPwd.length == 1 && elemPwd[0].type == 'password'){\
-                    elemEmails[0].value = '%@';\
-                    elemPwd[0].value = '%@';\
-                    elemEmails[0].parentNode.submit();\
-                    }", ret[@"username"], ret[@"password"]];
-                    [webView evaluateJavaScript:autoLogin completionHandler:^(id result, NSError *error) {
-                        if (error) {
-                            NSLog(@"evaluateJavaScript error : %@", error.localizedDescription);
-                        }
-                    }];
-                });
-            } else {
-                NSLog(@"Error: %@", ret);
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    if (ret[@"username"]) {
-                        NSString *addEmail = [NSString stringWithFormat:@"var elemEmails =\
-                                            document.getElementsByName('email');\
-                                            if (elemEmails.length == 1 && elemEmails[0].type == 'email'){\
-                                            elemEmails[0].value = '%@';\
-                                            }", ret[@"username"]];
-                        [webView evaluateJavaScript:addEmail completionHandler:^(id result, NSError *error) {
+        NSString *addEmailScheme = @"var elemEmails =\
+                              document.getElementsByName('email');\
+                              if (elemEmails.length == 1 && elemEmails[0].type == 'email'){\
+                              elemEmails[0].value = '%@';\
+                              }";
+        if ([_touchID checkSupport]
+            && [_touchID checkKey]
+            && ![((NSURL*)[_backList lastObject]).query containsString:ERROR_SIGN_IN_PARAM])
+        {
+            [_touchID verify:@"Enter Coviu via fingerprint" replyPass:^(BOOL success, NSDictionary* ret){
+                if (success) {
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        NSString *autoLogin = [NSString stringWithFormat:@"var elemEmails = document.getElementsByName('email');\
+                        var elemPwd = document.getElementsByName('password');\
+                        if (elemEmails.length == 1 && elemEmails[0].type == 'email' && elemPwd.length == 1 && elemPwd[0].type == 'password'){\
+                        elemEmails[0].value = '%@';\
+                        elemPwd[0].value = '%@';\
+                        elemEmails[0].parentNode.submit();\
+                        }", ret[@"username"], ret[@"password"]];
+                        [webView evaluateJavaScript:autoLogin completionHandler:^(id result, NSError *error) {
                             if (error) {
                                 NSLog(@"evaluateJavaScript error : %@", error.localizedDescription);
                             }
                         }];
+                    });
+                } else {
+                    NSLog(@"Error: %@", ret);
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        if (ret[@"username"]) {
+                            NSString *addEmail = [NSString stringWithFormat:addEmailScheme, ret[@"username"]];
+                            [webView evaluateJavaScript:addEmail completionHandler:^(id result, NSError *error) {
+                                if (error) {
+                                    NSLog(@"evaluateJavaScript error : %@", error.localizedDescription);
+                                }
+                            }];
+                        }
+                        
+                        if ([ret[@"error"] containsString:@"Canceled by user"]
+                            || [ret[@"error"] containsString:@"Fallback authentication"]) {
+                            return;
+                        }
+                        
+                        UIAlertController * alert = [UIAlertController
+                                                     alertControllerWithTitle:@"Error on fingerprint"
+                                                     message:ret[@"error"]
+                                                     preferredStyle:UIAlertControllerStyleAlert];
+                        UIAlertAction* okButton = [UIAlertAction
+                                                   actionWithTitle:@"Okay"
+                                                   style:UIAlertActionStyleDefault
+                                                   handler:^(UIAlertAction * action) {
+                                                   }];
+                        [alert addAction:okButton];
+                        
+                        id object = [webView nextResponder];
+                        while (![object isKindOfClass:[UIViewController class]] &&
+                               object != nil) {
+                            object = [object nextResponder];
+                        }
+                        
+                        [(UIViewController*)object presentViewController:alert animated:YES completion:nil];
+                    });
+                }
+            }];
+        }
+        else if (![((NSURL*)[_backList lastObject]).query containsString:ERROR_SIGN_IN_PARAM])
+        {
+            [_touchID onlyVerifyUser:^(BOOL success, NSDictionary* ret){
+                if (!success)
+                    return;
+                NSString *addEmail = [NSString stringWithFormat:addEmailScheme, ret[@"username"]];
+                [webView evaluateJavaScript:addEmail completionHandler:^(id result, NSError *error) {
+                    if (error) {
+                        NSLog(@"evaluateJavaScript error : %@", error.localizedDescription);
                     }
-                    
-                    if ([ret[@"error"] containsString:@"Canceled by user"]
-                        || [ret[@"error"] containsString:@"Fallback authentication"]) {
-                        return;
-                    }
-                    
-                    UIAlertController * alert = [UIAlertController
-                                                 alertControllerWithTitle:@"Error on fingerprint"
-                                                 message:ret[@"error"]
-                                                 preferredStyle:UIAlertControllerStyleAlert];
-                    UIAlertAction* okButton = [UIAlertAction
-                                               actionWithTitle:@"Okay"
-                                               style:UIAlertActionStyleDefault
-                                               handler:^(UIAlertAction * action) {
-                                               }];
-                    [alert addAction:okButton];
-                    
-                    id object = [webView nextResponder];
-                    while (![object isKindOfClass:[UIViewController class]] &&
-                           object != nil) {
-                        object = [object nextResponder];
-                    }
-                    
-                    [(UIViewController*)object presentViewController:alert animated:YES completion:nil];
-                });
-            }
-        }];
+                }];
+            }];
+        }
     }
-    
+
     [_delegate webView:webView didFinishNavigation:navigation];
 }
 

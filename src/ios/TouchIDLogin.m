@@ -58,6 +58,19 @@
     }
 }
 
+- (BOOL) onlySaveUser:(NSString*)username
+{
+    @try {
+        [[NSUserDefaults standardUserDefaults] setBool:true forKey:@"CoviuKey"];
+        [[NSUserDefaults standardUserDefaults] setValue:username forKey:@"CoviuUser"];
+        [[NSUserDefaults standardUserDefaults] synchronize];
+        return YES;
+    }
+    @catch(NSException *exception){
+        return NO;
+    }
+}
+
 -(BOOL) remove:(NSString*)userKey
 {
     @try {
@@ -93,6 +106,16 @@
         }
     } else {
         callback(NO, @{@"error":@"No credential in chain"});
+    }
+}
+
+-(void) onlyVerifyUser:(void(^)(BOOL, NSDictionary*))callback
+{
+    if([[NSUserDefaults standardUserDefaults] boolForKey:@"CoviuKey"]) {
+        NSString* username = [[NSUserDefaults standardUserDefaults] stringForKey:@"CoviuUser"];
+        callback(YES, @{@"username":username});
+    } else {
+        callback(NO, @{@"error":@"No user in chain"});
     }
 }
 @end
