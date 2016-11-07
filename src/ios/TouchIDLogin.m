@@ -4,6 +4,9 @@
 #import "KeychainWrapper.h"
 #import <LocalAuthentication/LocalAuthentication.h>
 
+#define COVIU_KEY_NAME  @"CoviuKey"
+#define COVIU_USER_NAME @"CoviuUser"
+
 @interface TouchIDLogin ()
 @property (strong, nonatomic) LAContext* laContext;
 @property (strong, nonatomic) KeychainWrapper* keychainWrapper;
@@ -40,7 +43,7 @@
 
 - (BOOL) checkKey
 {
-    return [[NSUserDefaults standardUserDefaults] boolForKey:@"CoviuKey"];
+    return [[NSUserDefaults standardUserDefaults] boolForKey:COVIU_KEY_NAME];
 }
 
 - (BOOL) save:(NSDictionary*)credential
@@ -48,8 +51,8 @@
     @try {
         [_keychainWrapper mySetObject:credential[@"password"] forKey:(__bridge id)(kSecValueData)];
         [_keychainWrapper writeToKeychain];
-        [[NSUserDefaults standardUserDefaults] setBool:true forKey:@"CoviuKey"];
-        [[NSUserDefaults standardUserDefaults] setValue:credential[@"username"] forKey:@"username"];
+        [[NSUserDefaults standardUserDefaults] setBool:true forKey:COVIU_KEY_NAME];
+        [[NSUserDefaults standardUserDefaults] setValue:credential[@"username"] forKey:COVIU_USER_NAME];
         [[NSUserDefaults standardUserDefaults] synchronize];
         return YES;
     }
@@ -61,8 +64,8 @@
 - (BOOL) onlySaveUser:(NSString*)username
 {
     @try {
-        [[NSUserDefaults standardUserDefaults] setBool:true forKey:@"CoviuKey"];
-        [[NSUserDefaults standardUserDefaults] setValue:username forKey:@"CoviuUser"];
+        [[NSUserDefaults standardUserDefaults] setBool:true forKey:COVIU_KEY_NAME];
+        [[NSUserDefaults standardUserDefaults] setValue:username forKey:COVIU_USER_NAME];
         [[NSUserDefaults standardUserDefaults] synchronize];
         return YES;
     }
@@ -84,9 +87,9 @@
 
 -(void) verify:(NSString*)message replyPass:(void(^)(BOOL, NSDictionary*))callback
 {
-    if([[NSUserDefaults standardUserDefaults] boolForKey:@"CoviuKey"]) {
-        NSString* username = [[NSUserDefaults standardUserDefaults] stringForKey:@"username"];
-        if([self checkSupport]) {
+    if([[NSUserDefaults standardUserDefaults] boolForKey:COVIU_KEY_NAME]) {
+        NSString* username = [[NSUserDefaults standardUserDefaults] stringForKey:COVIU_USER_NAME];
+        if([self checkSupport] && username) {
             [_laContext evaluatePolicy:LAPolicyDeviceOwnerAuthenticationWithBiometrics
                        localizedReason:message
                                  reply:^(BOOL success, NSError *error) {
@@ -101,6 +104,10 @@
                                      }
                                  }];
         } else {
+            if (!username) {
+                username = @"";
+                [self remove:COVIU_KEY_NAME];
+            }
             callback(NO, @{@"error":@"Touch ID not availalbe",
                            @"username":username});
         }
@@ -111,8 +118,12 @@
 
 -(void) onlyVerifyUser:(void(^)(BOOL, NSDictionary*))callback
 {
-    if([[NSUserDefaults standardUserDefaults] boolForKey:@"CoviuKey"]) {
-        NSString* username = [[NSUserDefaults standardUserDefaults] stringForKey:@"CoviuUser"];
+    if([[NSUserDefaults standardUserDefaults] boolForKey:COVIU_KEY_NAME]) {
+        NSString* username = [[NSUserDefaults standardUserDefaults] stringForKey:COVIU_USER_NAME];
+        if (!username) {
+            username = @"";
+            [self remove:COVIU_KEY_NAME];
+        }
         callback(YES, @{@"username":username});
     } else {
         callback(NO, @{@"error":@"No user in chain"});
