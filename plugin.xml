@@ -49,12 +49,13 @@
         </config-file>
 
         <framework src="WebKit.framework" weak="true" />
-        <source-file src="src/ios/thirdparty/libKVNProgress.a" framework="true" />
-        <source-file src="src/ios/thirdparty/headers/KVNProgress.h" />
-        <source-file src="src/ios/thirdparty/headers/KVNProgressConfiguration.h" />
-        <source-file src="src/ios/thirdparty/headers/UIColor+KVNContrast.h" />
-        <source-file src="src/ios/thirdparty/headers/UIImage+KVNEmpty.h" />
-        <source-file src="src/ios/thirdparty/headers/UIImage+KVNImageEffects.h" />
+        <resource-file src="src/ios/thirdparty/KVNProgressView.xib"/>
+        <source-file autogen="true" src="src/ios/thirdparty/libKVNProgress.a" framework="true" />
+        <source-file autogen="true" src="src/ios/thirdparty/headers/KVNProgress.h" />
+        <source-file autogen="true" src="src/ios/thirdparty/headers/KVNProgressConfiguration.h" />
+        <source-file autogen="true" src="src/ios/thirdparty/headers/UIColor+KVNContrast.h" />
+        <source-file autogen="true" src="src/ios/thirdparty/headers/UIImage+KVNEmpty.h" />
+        <source-file autogen="true" src="src/ios/thirdparty/headers/UIImage+KVNImageEffects.h" />
 
         <header-file src="src/ios/CDVWKWebViewEngine.h" />
         <source-file src="src/ios/CDVWKWebViewEngine.m" />
