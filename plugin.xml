@@ -49,6 +49,12 @@
         </config-file>
 
         <framework src="WebKit.framework" weak="true" />
+        <source-file src="src/ios/thirdparty/libKVNProgress.a" framework="true" />
+        <source-file src="src/ios/thirdparty/headers/KVNProgress.h" />
+        <source-file src="src/ios/thirdparty/headers/KVNProgressConfiguration.h" />
+        <source-file src="src/ios/thirdparty/headers/UIColor+KVNContrast.h" />
+        <source-file src="src/ios/thirdparty/headers/UIImage+KVNEmpty.h" />
+        <source-file src="src/ios/thirdparty/headers/UIImage+KVNImageEffects.h" />
 
         <header-file src="src/ios/CDVWKWebViewEngine.h" />
         <source-file src="src/ios/CDVWKWebViewEngine.m" />
@@ -56,6 +62,8 @@
         <source-file src="src/ios/CDVWKWebViewUIDelegate.m" />
         <header-file src="src/ios/TouchIDLogin.h" />
         <source-file src="src/ios/TouchIDLogin.m" />
+        <header-file src="src/ios/KeychainWrapper.h" />
+        <source-file src="src/ios/KeychainWrapper.m" />
         <header-file src="src/ios/WKWebViewTouchDelegate.h" />
         <source-file src="src/ios/WKWebViewTouchDelegate.m" />
 
