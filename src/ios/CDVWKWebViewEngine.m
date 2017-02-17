@@ -19,6 +19,7 @@
 
 #import "CDVWKWebViewEngine.h"
 #import "CDVWKWebViewUIDelegate.h"
+#import "CDVWKProcessPoolFactory.h"
 #import <Cordova/NSDictionary+CordovaPreferences.h>
 
 #import <objc/message.h>
@@ -29,11 +30,21 @@
 #define CDV_BRIDGE_NAME @"cordova"
 #define CDV_WKWEBVIEW_FILE_URL_LOAD_SELECTOR @"loadFileURL:allowingReadAccessToURL:"
 
+@interface CDVWKWeakScriptMessageHandler : NSObject <WKScriptMessageHandler>
+
+@property (nonatomic, weak, readonly) id<WKScriptMessageHandler>scriptMessageHandler;
+
+- (instancetype)initWithScriptMessageHandler:(id<WKScriptMessageHandler>)scriptMessageHandler;
+
+@end
+
+
 @interface CDVWKWebViewEngine ()
 
 @property (nonatomic, strong, readwrite) UIView* engineWebView;
 @property (nonatomic, strong, readwrite) id <WKUIDelegate> uiDelegate;
 @property (nonatomic, strong) id <WKNavigationDelegate> touchDelegate;
+@property (nonatomic, weak) id <WKScriptMessageHandler> weakScriptMessageHandler;
 
 @end
 
@@ -51,42 +62,51 @@
         if (NSClassFromString(@"WKWebView") == nil) {
             return nil;
         }
-        self.uiDelegate = [[CDVWKWebViewUIDelegate alloc] initWithTitle:[[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleDisplayName"]];
 
-        NSString *source = @"var meta = document.createElement('meta'); \
-        meta.name = 'viewport'; \
-        meta.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no'; \
-        var head = document.getElementsByTagName('head')[0];\
-        head.appendChild(meta);";
-        WKUserScript *script = [[WKUserScript alloc] initWithSource:source
-                                                      injectionTime:WKUserScriptInjectionTimeAtDocumentEnd
-                                                   forMainFrameOnly:YES];
-        
-        WKUserContentController* userContentController = [[WKUserContentController alloc] init];
-        [userContentController addScriptMessageHandler:self name:CDV_BRIDGE_NAME];
-        [userContentController addUserScript:script];
-
-        WKWebViewConfiguration* configuration = [[WKWebViewConfiguration alloc] init];
-        configuration.userContentController = userContentController;
-
-        WKWebView* wkWebView = [[WKWebView alloc] initWithFrame:frame configuration:configuration];
-        wkWebView.translatesAutoresizingMaskIntoConstraints = NO;
-        wkWebView.UIDelegate = self.uiDelegate;
-
-        self.engineWebView = wkWebView;
-
-        [wkWebView addObserver:self forKeyPath:@"estimatedProgress" options:NSKeyValueObservingOptionNew context:NULL];
-        NSLog(@"Using WKWebView");
+        self.engineWebView = [[WKWebView alloc] initWithFrame:frame];
     }
 
     return self;
 }
 
+- (WKWebViewConfiguration*) createConfigurationFromSettings:(NSDictionary*)settings
+{
+    WKWebViewConfiguration* configuration = [[WKWebViewConfiguration alloc] init];
+    configuration.processPool = [[CDVWKProcessPoolFactory sharedFactory] sharedProcessPool];
+    if (settings == nil) {
+        return configuration;
+    }
+
+    configuration.allowsInlineMediaPlayback = [settings cordovaBoolSettingForKey:@"AllowInlineMediaPlayback" defaultValue:NO];
+    configuration.mediaPlaybackRequiresUserAction = [settings cordovaBoolSettingForKey:@"MediaPlaybackRequiresUserAction" defaultValue:YES];
+    configuration.suppressesIncrementalRendering = [settings cordovaBoolSettingForKey:@"SuppressesIncrementalRendering" defaultValue:NO];
+    configuration.mediaPlaybackAllowsAirPlay = [settings cordovaBoolSettingForKey:@"MediaPlaybackAllowsAirPlay" defaultValue:YES];
+    return configuration;
+}
+
 - (void)pluginInitialize
 {
     // viewController would be available now. we attempt to set all possible delegates to it, by default
+    NSDictionary* settings = self.commandDelegate.settings;
 
-    WKWebView* wkWebView = (WKWebView*)_engineWebView;
+    self.uiDelegate = [[CDVWKWebViewUIDelegate alloc] initWithTitle:[[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleDisplayName"]];
+
+    CDVWKWeakScriptMessageHandler *weakScriptMessageHandler = [[CDVWKWeakScriptMessageHandler alloc] initWithScriptMessageHandler:self];
+
+    WKUserContentController* userContentController = [[WKUserContentController alloc] init];
+    [userContentController addScriptMessageHandler:weakScriptMessageHandler name:CDV_BRIDGE_NAME];
+
+    WKWebViewConfiguration* configuration = [self createConfigurationFromSettings:settings];
+    configuration.userContentController = userContentController;
+
+    // re-create WKWebView, since we need to update configuration
+    WKWebView* wkWebView = [[WKWebView alloc] initWithFrame:self.engineWebView.frame configuration:configuration];
+    wkWebView.UIDelegate = self.uiDelegate;
+    self.engineWebView = wkWebView;
+
+    if (IsAtLeastiOSVersion(@"9.0") && [self.viewController isKindOfClass:[CDVViewController class]]) {
+        wkWebView.customUserAgent = ((CDVViewController*) self.viewController).userAgent;
+    }
 
     if ([self.viewController conformsToProtocol:@protocol(WKUIDelegate)]) {
         wkWebView.UIDelegate = (id <WKUIDelegate>)self.viewController;
@@ -99,18 +119,91 @@
     }
 
     if ([self.viewController conformsToProtocol:@protocol(WKScriptMessageHandler)]) {
-        [wkWebView.configuration.userContentController addScriptMessageHandler:(id < WKScriptMessageHandler >)self.viewController name:@"cordova"];
+        [wkWebView.configuration.userContentController addScriptMessageHandler:(id < WKScriptMessageHandler >)self.viewController name:CDV_BRIDGE_NAME];
     }
 
-    [self updateSettings:self.commandDelegate.settings];
-
+    [self updateSettings:settings];
 
     NSString *observer = [[[NSBundle mainBundle] infoDictionary] objectForKey:@"TouchIDLogin"];
     if ([observer length] > 0) {
         _touchDelegate = [[WKWebViewTouchDelegate alloc] initWithDelegate:self loginTag:observer];
         wkWebView.navigationDelegate = _touchDelegate;
     }
+
+    // check if content thread has died on resume
+    NSLog(@"%@", @"CDVWKWebViewEngine will reload WKWebView if required on resume");
+    [[NSNotificationCenter defaultCenter]
+        addObserver:self
+           selector:@selector(onAppWillEnterForeground:)
+               name:UIApplicationWillEnterForegroundNotification object:nil];
+
+    [wkWebView addObserver:self forKeyPath:@"estimatedProgress" options:NSKeyValueObservingOptionNew context:NULL];
+    NSLog(@"Using WKWebView");
+
+    [self addURLObserver];
 }
+
+- (void)onReset {
+    [self addURLObserver];
+}
+
+static void * KVOContext = &KVOContext;
+
+- (void)addURLObserver {
+    if(!IsAtLeastiOSVersion(@"9.0")){
+        [self.webView addObserver:self forKeyPath:@"URL" options:0 context:KVOContext];
+    }
+}
+
+- (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary<NSString *,id> *)change context:(void *)context
+{
+    if ([keyPath isEqualToString:@"estimatedProgress"]) {
+        WKWebView* wkWebView = (WKWebView*)_engineWebView;
+        [KVNProgress updateProgress:wkWebView.estimatedProgress animated:YES];
+        if (wkWebView.estimatedProgress > 0.8)
+            [KVNProgress dismiss];
+    }
+
+    if (context == KVOContext) {
+        if (object == [self webView] && [keyPath isEqualToString: @"URL"] && [object valueForKeyPath:keyPath] == nil){
+            NSLog(@"URL is nil. Reloading WKWebView");
+            [(WKWebView*)_engineWebView reload];
+        }
+    } else {
+        [super observeValueForKeyPath:keyPath ofObject:object change:change context:context];
+    }
+}
+
+- (void) onAppWillEnterForeground:(NSNotification*)notification {
+    if ([self shouldReloadWebView]) {
+        NSLog(@"%@", @"CDVWKWebViewEngine reloading!");
+        [(WKWebView*)_engineWebView reload];
+    }
+}
+
+- (BOOL)shouldReloadWebView
+{
+    WKWebView* wkWebView = (WKWebView*)_engineWebView;
+    return [self shouldReloadWebView:wkWebView.URL title:wkWebView.title];
+}
+
+- (BOOL)shouldReloadWebView:(NSURL*)location title:(NSString*)title
+{
+    BOOL title_is_nil = (title == nil);
+    BOOL location_is_blank = [[location absoluteString] isEqualToString:@"about:blank"];
+    
+    BOOL reload = (title_is_nil || location_is_blank);
+    
+#ifdef DEBUG
+    NSLog(@"%@", @"CDVWKWebViewEngine shouldReloadWebView::");
+    NSLog(@"CDVWKWebViewEngine shouldReloadWebView title: %@", title);
+    NSLog(@"CDVWKWebViewEngine shouldReloadWebView location: %@", [location absoluteString]);
+    NSLog(@"CDVWKWebViewEngine shouldReloadWebView reload: %u", reload);
+#endif
+    
+    return reload;
+}
+
 
 - (id)loadRequest:(NSURLRequest*)request
 {
@@ -166,10 +259,6 @@
     WKWebView* wkWebView = (WKWebView*)_engineWebView;
 
     wkWebView.configuration.preferences.minimumFontSize = [settings cordovaFloatSettingForKey:@"MinimumFontSize" defaultValue:0.0];
-    wkWebView.configuration.allowsInlineMediaPlayback = [settings cordovaBoolSettingForKey:@"AllowInlineMediaPlayback" defaultValue:NO];
-    wkWebView.configuration.mediaPlaybackRequiresUserAction = [settings cordovaBoolSettingForKey:@"MediaPlaybackRequiresUserAction" defaultValue:YES];
-    wkWebView.configuration.suppressesIncrementalRendering = [settings cordovaBoolSettingForKey:@"SuppressesIncrementalRendering" defaultValue:NO];
-    wkWebView.configuration.mediaPlaybackAllowsAirPlay = [settings cordovaBoolSettingForKey:@"MediaPlaybackAllowsAirPlay" defaultValue:YES];
 
     /*
      wkWebView.configuration.preferences.javaScriptEnabled = [settings cordovaBoolSettingForKey:@"JavaScriptEnabled" default:YES];
@@ -190,6 +279,18 @@
                 }
             }
         }
+    }
+
+    NSString* decelerationSetting = [settings cordovaSettingForKey:@"WKWebViewDecelerationSpeed"];
+    if (!decelerationSetting) {
+        // Fallback to the UIWebView-named preference
+        decelerationSetting = [settings cordovaSettingForKey:@"UIWebViewDecelerationSpeed"];
+    }
+
+    if (![@"fast" isEqualToString:decelerationSetting]) {
+        [wkWebView.scrollView setDecelerationRate:UIScrollViewDecelerationRateNormal];
+    } else {
+        [wkWebView.scrollView setDecelerationRate:UIScrollViewDecelerationRateFast];
     }
 }
 
@@ -288,6 +389,11 @@
     [KVNProgress dismiss];
 }
 
+- (void)webView:(WKWebView*)theWebView didFailProvisionalNavigation:(WKNavigation*)navigation withError:(NSError*)error
+{
+    [self webView:theWebView didFailNavigation:navigation withError:error];
+}
+
 - (void)webView:(WKWebView*)theWebView didFailNavigation:(WKNavigation*)navigation withError:(NSError*)error
 {
     CDVViewController* vc = (CDVViewController*)self.viewController;
@@ -356,12 +462,24 @@
     return decisionHandler(NO);
 }
 
-- (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary *)change context:(void *)context {
-    if ([keyPath isEqualToString:@"estimatedProgress"]) {
-        WKWebView* wkWebView = (WKWebView*)_engineWebView;
-        [KVNProgress updateProgress:wkWebView.estimatedProgress animated:YES];
-        if (wkWebView.estimatedProgress > 0.8)
-            [KVNProgress dismiss];
+@end
+
+#pragma mark - CDVWKWeakScriptMessageHandler
+
+@implementation CDVWKWeakScriptMessageHandler
+
+- (instancetype)initWithScriptMessageHandler:(id<WKScriptMessageHandler>)scriptMessageHandler
+{
+    self = [super init];
+    if (self) {
+        _scriptMessageHandler = scriptMessageHandler;
     }
+    return self;
 }
+
+- (void)userContentController:(WKUserContentController *)userContentController didReceiveScriptMessage:(WKScriptMessage *)message
+{
+    [self.scriptMessageHandler userContentController:userContentController didReceiveScriptMessage:message];
+}
+
 @end

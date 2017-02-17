@@ -45,13 +45,14 @@ To test the development version:
     cordova platform add https://github.com/apache/cordova-ios.git#master
     cordova plugin add https://github.com/apache/cordova-plugin-wkwebview-engine.git#master
 
-You also must have Xcode 7 (iOS 9 SDK) installed. Check your Xcode version by running:
+You also must have at least Xcode 7 (iOS 9 SDK) installed. Check your Xcode version by running:
 
     xcode-select --print-path
 
 Required Permissions
 -----------
-WKWebView may not fully launch (the deviceready event may not fire) unless if the following is included in config.xml:
+WKWebView may not fully launch (the deviceready event may not fire) unless if the following is included in config.xml. This should already be installed by Cordova in your platform config.xml when the plugin is installed.
+
 #### config.xml
 
         <feature name="CDVWKWebViewEngine">
@@ -63,6 +64,7 @@ WKWebView may not fully launch (the deviceready event may not fire) unless if th
 
 Notes
 ------
+This plugin creates a shared `WKProcessPool` which ensures the cookie sharing happens correctly across `WKWebView` instances. `CDVWKProcessPoolFactory` class can be used to obtain the shared `WKProcessPool` instance if app creates `WKWebView` outside of this plugin.
 
 On an iOS 8 system, Apache Cordova during runtime will switch to using the UIWebView engine instead of using this plugin. If you want to use WKWebView on both iOS 8 and iOS 9 platforms, you will have to resort to using a local webserver.
 
@@ -71,7 +73,9 @@ We have an [experimental plugin](https://github.com/apache/cordova-plugins/tree/
 Application Transport Security (ATS) in iOS 9
 -----------
 
-The next released version of the [cordova-cli 5.4.0](https://www.npmjs.com/package/cordova) will support automatic conversion of the [&lt;access&gt;](http://cordova.apache.org/docs/en/edge/guide/appdev/whitelist/index.html) tags in config.xml to Application Transport Security [ATS](https://developer.apple.com/library/prerelease/ios/documentation/General/Reference/InfoPlistKeyReference/Articles/CocoaKeys.html#//apple_ref/doc/uid/TP40009251-SW33) directives. Upgrade to the version 5.4.0 to use this new functionality.
+Starting with [cordova-cli 5.4.0](https://www.npmjs.com/package/cordova), it will support automatic conversion of the [&lt;access&gt;](http://cordova.apache.org/docs/en/edge/guide/appdev/whitelist/index.html) tags in config.xml to Application Transport Security [ATS](https://developer.apple.com/library/prerelease/ios/documentation/General/Reference/InfoPlistKeyReference/Articles/CocoaKeys.html#//apple_ref/doc/uid/TP40009251-SW33) directives. 
+
+Upgrade to at least version 5.4.0 of the cordova-cli to use this new functionality.
 
 Limitations
 --------

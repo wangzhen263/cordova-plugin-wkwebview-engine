@@ -1,4 +1,13 @@
-language: node_js
+osx_image: xcode8
+language: objective-c
 sudo: false
-node_js:
-  - "4.2"
+before_install:
+    - npm cache clean -f
+    - npm install -g n
+    - n stable
+    - node --version
+    - xcodebuild -version
+install:
+    - npm install
+script:
+    - npm test
