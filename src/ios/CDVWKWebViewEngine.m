@@ -157,18 +157,16 @@ static void * KVOContext = &KVOContext;
 
 - (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary<NSString *,id> *)change context:(void *)context
 {
-    if ([keyPath isEqualToString:@"estimatedProgress"]) {
-        WKWebView* wkWebView = (WKWebView*)_engineWebView;
-        [KVNProgress updateProgress:wkWebView.estimatedProgress animated:YES];
-        if (wkWebView.estimatedProgress > 0.8)
-            [KVNProgress dismiss];
-    }
-
     if (context == KVOContext) {
         if (object == [self webView] && [keyPath isEqualToString: @"URL"] && [object valueForKeyPath:keyPath] == nil){
             NSLog(@"URL is nil. Reloading WKWebView");
             [(WKWebView*)_engineWebView reload];
         }
+    } else if ([keyPath isEqualToString:@"estimatedProgress"]){
+        WKWebView* wkWebView = (WKWebView*)_engineWebView;
+        [KVNProgress updateProgress:wkWebView.estimatedProgress animated:YES];
+        if (wkWebView.estimatedProgress > 0.8)
+            [KVNProgress dismiss];
     } else {
         [super observeValueForKeyPath:keyPath ofObject:object change:change context:context];
     }
