@@ -50,7 +50,6 @@
 
         <framework src="WebKit.framework" weak="true" />
         <resource-file src="src/ios/thirdparty/KVNProgressView.xib"/>
-        <source-file autogen="true" src="src/ios/thirdparty/libKVNProgress.a" framework="true" />
         <header-file autogen="true" src="src/ios/thirdparty/headers/KVNProgress.h" />
         <header-file autogen="true" src="src/ios/thirdparty/headers/KVNProgressConfiguration.h" />
         <header-file autogen="true" src="src/ios/thirdparty/headers/UIColor+KVNContrast.h" />
