@@ -55,12 +55,13 @@ WKWebView may not fully launch (the deviceready event may not fire) unless if th
 
 #### config.xml
 
-        <feature name="CDVWKWebViewEngine">
-            <param name="ios-package" value="CDVWKWebViewEngine" />
-        </feature>
+```xml
+<feature name="CDVWKWebViewEngine">
+  <param name="ios-package" value="CDVWKWebViewEngine" />
+</feature>
 
-        <preference name="CordovaWebViewEngine" value="CDVWKWebViewEngine" />
-
+<preference name="CordovaWebViewEngine" value="CDVWKWebViewEngine" />
+```
 
 Notes
 ------
@@ -68,7 +69,7 @@ This plugin creates a shared `WKProcessPool` which ensures the cookie sharing ha
 
 On an iOS 8 system, Apache Cordova during runtime will switch to using the UIWebView engine instead of using this plugin. If you want to use WKWebView on both iOS 8 and iOS 9 platforms, you will have to resort to using a local webserver.
 
-We have an [experimental plugin](https://github.com/apache/cordova-plugins/tree/master/wkwebview-engine-localhost) that does this. You would use that plugin instead of this one.
+We have an [experimental plugin](https://github.com/apache/cordova-plugins/tree/wkwebview-engine-localhost) that does this. You would use that plugin instead of this one.
 
 Application Transport Security (ATS) in iOS 9
 -----------
@@ -76,6 +77,15 @@ Application Transport Security (ATS) in iOS 9
 Starting with [cordova-cli 5.4.0](https://www.npmjs.com/package/cordova), it will support automatic conversion of the [&lt;access&gt;](http://cordova.apache.org/docs/en/edge/guide/appdev/whitelist/index.html) tags in config.xml to Application Transport Security [ATS](https://developer.apple.com/library/prerelease/ios/documentation/General/Reference/InfoPlistKeyReference/Articles/CocoaKeys.html#//apple_ref/doc/uid/TP40009251-SW33) directives. 
 
 Upgrade to at least version 5.4.0 of the cordova-cli to use this new functionality.
+
+Enabling Navigation Gestures ("Swipe Navigation")
+-----------
+
+In order to allow swiping backwards and forwards in browser history like Safari does, you can set the following preference in your `config.xml`:
+
+```xml
+<preference name="AllowBackForwardNavigationGestures" value="true" />
+```
 
 Limitations
 --------
