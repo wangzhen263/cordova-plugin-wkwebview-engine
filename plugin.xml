@@ -50,11 +50,18 @@
 
         <framework src="WebKit.framework" weak="true" />
         <resource-file src="src/ios/thirdparty/KVNProgressView.xib"/>
-        <header-file autogen="true" src="src/ios/thirdparty/headers/KVNProgress.h" />
-        <header-file autogen="true" src="src/ios/thirdparty/headers/KVNProgressConfiguration.h" />
-        <header-file autogen="true" src="src/ios/thirdparty/headers/UIColor+KVNContrast.h" />
-        <header-file autogen="true" src="src/ios/thirdparty/headers/UIImage+KVNEmpty.h" />
-        <header-file autogen="true" src="src/ios/thirdparty/headers/UIImage+KVNImageEffects.h" />
+        <header-file autogen="true" src="src/ios/thirdparty/KVNProgress.h" />
+        <source-file autogen="true" src="src/ios/thirdparty/KVNProgress.m" />
+        <header-file autogen="true" src="src/ios/thirdparty/KVNProgressConfiguration.h" />
+        <source-file autogen="true" src="src/ios/thirdparty/KVNProgressConfiguration.m" />
+        <header-file autogen="true" src="src/ios/thirdparty/KVNRotationViewController.h" />
+        <source-file autogen="true" src="src/ios/thirdparty/KVNRotationViewController.m" />
+        <header-file autogen="true" src="src/ios/thirdparty/UIColor+KVNContrast.h" />
+        <source-file autogen="true" src="src/ios/thirdparty/UIColor+KVNContrast.m" />
+        <header-file autogen="true" src="src/ios/thirdparty/UIImage+KVNEmpty.h" />
+        <source-file autogen="true" src="src/ios/thirdparty/UIImage+KVNEmpty.m" />
+        <header-file autogen="true" src="src/ios/thirdparty/UIImage+KVNImageEffects.h" />
+        <source-file autogen="true" src="src/ios/thirdparty/UIImage+KVNImageEffects.m" />
 
         <header-file src="src/ios/CDVWKWebViewEngine.h" />
         <source-file src="src/ios/CDVWKWebViewEngine.m" />
