@@ -49,6 +49,9 @@
         </config-file>
 
         <framework src="WebKit.framework" weak="true" />
+        <framework src="QuartzCore.framework" weak="true" />
+        <framework src="GLKit.framework" weak="true" />
+        <framework src="UIKit.framework" weak="true" />
         <resource-file src="src/ios/thirdparty/KVNProgressView.xib"/>
         <header-file autogen="true" src="src/ios/thirdparty/KVNProgress.h" />
         <source-file autogen="true" src="src/ios/thirdparty/KVNProgress.m" />

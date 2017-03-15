@@ -17,7 +17,7 @@
 #import "KVNRotationViewController.h"
 
 #define KVNBlockSelf __blockSelf
-#define KVNPrepareBlockSelf() __weak typeof(self) KVNBlockSelf = self
+#define KVNPrepareBlockSelf() __weak KVNProgress *KVNBlockSelf = self
 #define KVNIpad UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPad
 #define KVNSystemVersionGreaterOrEqual_iOS_8 ([[[UIDevice currentDevice] systemVersion] compare:@"8" options:NSNumericSearch] != NSOrderedAscending)
 #define KVNRadiansToDegress(radians) ((radians) * (180.0 / M_PI))
